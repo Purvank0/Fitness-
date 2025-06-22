@@ -1,0 +1,14 @@
+1. Adding a Meal:
+Click "Add Meal" in the navigation
+Enter the meal name - nutrition data will be automatically fetched as you type
+Fill in other details and save
+
+2. Viewing Meals:
+The homepage shows all your meals
+Use the search box to find specific meals
+Filter by category using the dropdown
+
+3. Generating Reports:
+Click "Nutrition Report" in the navigation
+View totals, averages, and category breakdowns
+See your highest calorie meals
