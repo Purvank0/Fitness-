@@ -1,0 +1,59 @@
+/* Base Styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+
+.navbar {
+    box-shadow: 0 2px 4px rgba(0,0,0,.1);
+}
+
+.card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,.075);
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.nutrition-facts {
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.nutrition-label {
+    font-weight: bold;
+    color: #6c757d;
+}
+
+.category-badge {
+    font-size: 0.8rem;
+}
+
+/* Add Meal Form */
+.form-section {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,.075);
+}
+
+/* Report Styles */
+.report-card {
+    border-left: 4px solid #28a745;
+}
+
+.progress {
+    height: 10px;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .nutrition-facts .col {
+        margin-bottom: 10px;
+    }
+}
