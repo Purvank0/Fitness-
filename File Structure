@@ -1,0 +1,13 @@
+fitness-meal-planner/
+├── app.py               # Main Flask application
+├── meals.xlsx           # Excel data file (created automatically)
+├── requirements.txt     # Python dependencies
+├── static/              # Static files (CSS, JS)
+│   └── ...              
+└── templates/           # HTML templates
+    ├── base.html        # Base template
+    ├── index.html       # Homepage
+    ├── add_meal.html    # Add meal form
+    ├── view_meal.html   # View single meal
+    ├── edit_meal.html   # Edit meal form
+    └── meal_plan.html   # Meal planner page
