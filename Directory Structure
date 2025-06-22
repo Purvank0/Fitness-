@@ -1,1 +1,19 @@
-
+fitness_meal_planner/
+├── static/
+│   ├── css/
+│   │   └── style.css
+│   ├── js/
+│   │   └── script.js
+│   └── images/
+│       └── logo.png
+├── templates/
+│   ├── base.html
+│   ├── index.html
+│   ├── add.html
+│   └── report.html
+├── data/
+│   └── meals.xlsx
+├── app.py
+├── requirements.txt
+├── README.md
+└── config.py
