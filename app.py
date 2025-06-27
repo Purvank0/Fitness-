@@ -1,266 +1,223 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+import csv
 import os
-import openpyxl
-from openpyxl import Workbook
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
 
-app = Flask(_name_)
-app.secret_key = 'your_secret_key_here'
 
-# Excel file configuration
-EXCEL_FILE = 'meals.xlsx'
+app = Flask(__name__)
+app.secret_key = "super_secret_key"
 
-# Ensure Excel file exists with proper headers
-def init_excel_file():
-    if not os.path.exists(EXCEL_FILE):
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Meals"
-        headers = ['id', 'name', 'category', 'ingredients', 'calories', 'protein', 'carbs', 'fat', 'instructions', 'timestamp']
-        ws.append(headers)
-        wb.save(EXCEL_FILE)
 
-def get_next_id():
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    ws = wb.active
-    if ws.max_row <= 1:  # Only header row exists
-        return 1
-    return ws.cell(row=ws.max_row, column=1).value + 1
+@app.context_processor
+def inject_datetime():
+    return {'datetime': datetime}
 
-def get_all_meals():
+DATA_FOLDER = "data"
+MEAL_FILE = os.path.join(DATA_FOLDER, "meals.csv")
+USER_FILE = os.path.join(DATA_FOLDER, "users.csv")
+
+if not os.path.exists(DATA_FOLDER):
+    os.makedirs(DATA_FOLDER)
+
+def load_meals():
     meals = []
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    ws = wb.active
-    headers = [cell.value for cell in ws[1]]  # Get headers from first row
-    
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        meal = dict(zip(headers, row))
-        meals.append(meal)
+    if os.path.exists(MEAL_FILE):
+        with open(MEAL_FILE, newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                row["id"] = int(row["id"])
+                row["calories"] = int(row["calories"])
+                row["protein"] = int(row["protein"])
+                row["carbs"] = int(row["carbs"])
+                row["fat"] = int(row["fat"])
+                meals.append(row)
     return meals
 
-def get_meal_by_id(meal_id):
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    ws = wb.active
-    headers = [cell.value for cell in ws[1]]  # Get headers from first row
-    
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if row[0] == meal_id:  # id is first column
-            return dict(zip(headers, row))
-    return None
+def save_meals(meals):
+    with open(MEAL_FILE, "w", newline='', encoding='utf-8') as f:
+        fieldnames = [
+            "id", "name", "category", "ingredients",
+            "calories", "protein", "carbs", "fat",
+            "instructions", "timestamp"
+        ]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for meal in meals:
+            writer.writerow(meal)
 
-def save_meal(meal):
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    ws = wb.active
-    row = [
-        meal['id'],
-        meal['name'],
-        meal['category'],
-        meal['ingredients'],
-        meal['calories'],
-        meal['protein'],
-        meal['carbs'],
-        meal['fat'],
-        meal['instructions'],
-        meal['timestamp']
-    ]
-    ws.append(row)
-    wb.save(EXCEL_FILE)
+# ===================== AUTH SYSTEM =====================
+def load_users():
+    users = []
+    if os.path.exists(USER_FILE):
+        with open(USER_FILE, newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                users.append(row)
+    return users
 
-def update_meal(meal_id, updated_meal):
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    ws = wb.active
-    
-    for row in range(2, ws.max_row + 1):
-        if ws.cell(row=row, column=1).value == meal_id:  # Check id column
-            ws.cell(row=row, column=2, value=updated_meal['name'])
-            ws.cell(row=row, column=3, value=updated_meal['category'])
-            ws.cell(row=row, column=4, value=updated_meal['ingredients'])
-            ws.cell(row=row, column=5, value=updated_meal['calories'])
-            ws.cell(row=row, column=6, value=updated_meal['protein'])
-            ws.cell(row=row, column=7, value=updated_meal['carbs'])
-            ws.cell(row=row, column=8, value=updated_meal['fat'])
-            ws.cell(row=row, column=9, value=updated_meal['instructions'])
-            ws.cell(row=row, column=10, value=updated_meal['timestamp'])
-            break
-    
-    wb.save(EXCEL_FILE)
+def save_user(email, password):
+    exists = os.path.exists(USER_FILE)
+    hashed_password = generate_password_hash(password)
 
-def delete_meal(meal_id):
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    ws = wb.active
-    
-    # Find the row to delete
-    row_to_delete = None
-    for row in range(2, ws.max_row + 1):
-        if ws.cell(row=row, column=1).value == meal_id:
-            row_to_delete = row
-            break
-    
-    if row_to_delete:
-        ws.delete_rows(row_to_delete)
-        wb.save(EXCEL_FILE)
+    with open(USER_FILE, "a", newline='', encoding='utf-8') as f:
+        fieldnames = ["email", "password"]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if not exists:
+            writer.writeheader()
+        writer.writerow({"email": email, "password": hashed_password})
 
-def calculate_nutrition_totals(meal_ids):
-    meals = get_all_meals()
-    totals = {
-        'calories': 0,
-        'protein': 0,
-        'carbs': 0,
-        'fat': 0
-    }
-    
-    for meal_id in meal_ids:
-        meal = next((m for m in meals if m['id'] == meal_id), None)
-        if meal:
-            totals['calories'] += int(meal['calories'])
-            totals['protein'] += int(meal['protein'])
-            totals['carbs'] += int(meal['carbs'])
-            totals['fat'] += int(meal['fat'])
-    
-    return totals
+def user_exists(email):
+    return any(user["email"] == email for user in load_users())
 
-@app.route('/')
+def validate_user(email, password):
+    for user in load_users():
+        if user["email"] == email:
+            return check_password_hash(user["password"], password)
+    return False
+
+
+# ===================== ROUTES =====================
+@app.route("/")
+def home():
+    return redirect(url_for("get_started"))
+
+@app.route("/get-started")
+def get_started():
+    return render_template("get_started.html")
+
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email")
+        password = request.form.get("password")
+
+        if not email or not password:
+            flash("Please enter both email and password.", "warning")
+            return render_template("login.html")
+
+        if validate_user(email, password):
+            session["user"] = email
+            return redirect(url_for("index"))
+        else:
+            flash("Invalid email or password", "danger")
+            return render_template("login.html")
+    
+    return render_template("login.html")
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+        if user_exists(email):
+            flash("User already exists. Please login.", "warning")
+            return redirect(url_for("login"))
+        save_user(email, password)
+        flash("Registration successful. Please login.", "success")
+        return redirect(url_for("login"))
+    return render_template("register.html")
+
+@app.route("/logout")
+def logout():
+    session.pop("user", None)
+    flash("You have been logged out.", "info")
+    return redirect(url_for("login"))
+
+@app.route("/index")
 def index():
-    search_query = request.args.get('search', '')
-    category_filter = request.args.get('category', '')
-    meals = get_all_meals()
-    
-    if search_query:
-        meals = [meal for meal in meals if search_query.lower() in meal['name'].lower()]
-    
-    if category_filter:
-        meals = [meal for meal in meals if meal['category'].lower() == category_filter.lower()]
-    
-    categories = set(meal['category'] for meal in get_all_meals())
-    
-    return render_template('index.html', meals=meals, search_query=search_query, 
-                         categories=categories, selected_category=category_filter)
+    if "user" not in session:
+        return redirect(url_for("login"))
+    meals = load_meals()
+    return render_template("index.html", meals=meals)
 
-@app.route('/add', methods=['GET', 'POST'])
+@app.route("/add", methods=["GET", "POST"])
 def add_meal():
-    if request.method == 'POST':
-        name = request.form['name']
-        category = request.form['category']
-        ingredients = request.form['ingredients']
-        calories = request.form['calories']
-        protein = request.form['protein']
-        carbs = request.form['carbs']
-        fat = request.form['fat']
-        instructions = request.form['instructions']
-        
-        if not name or not category or not ingredients:
-            flash('Name, category, and ingredients are required!', 'danger')
-            return redirect(url_for('add_meal'))
-        
-        try:
-            calories = int(calories) if calories else 0
-            protein = int(protein) if protein else 0
-            carbs = int(carbs) if carbs else 0
-            fat = int(fat) if fat else 0
-        except ValueError:
-            flash('Nutrition values must be numbers!', 'danger')
-            return redirect(url_for('add_meal'))
-        
-        meal = {
-            'id': get_next_id(),
-            'name': name,
-            'category': category,
-            'ingredients': ingredients,
-            'calories': calories,
-            'protein': protein,
-            'carbs': carbs,
-            'fat': fat,
-            'instructions': instructions,
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    if "user" not in session:
+        return redirect(url_for("login"))
+    if request.method == "POST":
+        meals = load_meals()
+        new_id = max([meal["id"] for meal in meals], default=0) + 1
+        new_meal = {
+            "id": new_id,
+            "name": request.form["name"],
+            "category": request.form["category"],
+            "ingredients": request.form["ingredients"],
+            "calories": int(request.form.get("calories", 0)),
+            "protein": int(request.form.get("protein", 0)),
+            "carbs": int(request.form.get("carbs", 0)),
+            "fat": int(request.form.get("fat", 0)),
+            "instructions": request.form.get("instructions", ""),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        
-        save_meal(meal)
-        flash('Meal added successfully!', 'success')
-        return redirect(url_for('index'))
-    
-    return render_template('add_meal.html')
+        meals.append(new_meal)
+        save_meals(meals)
+        return redirect(url_for("index"))
+    return render_template("add_meal.html")
 
-@app.route('/meal/<int:meal_id>')
+@app.route("/view/<int:meal_id>")
 def view_meal(meal_id):
-    meal = get_meal_by_id(meal_id)
-    if not meal:
-        flash('Meal not found!', 'danger')
-        return redirect(url_for('index'))
-    return render_template('view_meal.html', meal=meal)
+    if "user" not in session:
+        return redirect(url_for("login"))
+    meals = load_meals()
+    meal = next((m for m in meals if m["id"] == meal_id), None)
+    if meal:
+        return render_template("view_meal.html", meal=meal)
+    return redirect(url_for("index"))
 
-@app.route('/edit/<int:meal_id>', methods=['GET', 'POST'])
+@app.route("/edit/<int:meal_id>", methods=["GET", "POST"])
 def edit_meal(meal_id):
-    meal = get_meal_by_id(meal_id)
+    if "user" not in session:
+        return redirect(url_for("login"))
+    meals = load_meals()
+    meal = next((m for m in meals if m["id"] == meal_id), None)
     if not meal:
-        flash('Meal not found!', 'danger')
-        return redirect(url_for('index'))
-    
-    if request.method == 'POST':
-        name = request.form['name']
-        category = request.form['category']
-        ingredients = request.form['ingredients']
-        calories = request.form['calories']
-        protein = request.form['protein']
-        carbs = request.form['carbs']
-        fat = request.form['fat']
-        instructions = request.form['instructions']
-        
-        if not name or not category or not ingredients:
-            flash('Name, category, and ingredients are required!', 'danger')
-            return redirect(url_for('edit_meal', meal_id=meal_id))
-        
-        try:
-            calories = int(calories) if calories else 0
-            protein = int(protein) if protein else 0
-            carbs = int(carbs) if carbs else 0
-            fat = int(fat) if fat else 0
-        except ValueError:
-            flash('Nutrition values must be numbers!', 'danger')
-            return redirect(url_for('edit_meal', meal_id=meal_id))
-        
-        updated_meal = {
-            'id': meal_id,
-            'name': name,
-            'category': category,
-            'ingredients': ingredients,
-            'calories': calories,
-            'protein': protein,
-            'carbs': carbs,
-            'fat': fat,
-            'instructions': instructions,
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        
-        update_meal(meal_id, updated_meal)
-        flash('Meal updated successfully!', 'success')
-        return redirect(url_for('view_meal', meal_id=meal_id))
-    
-    return render_template('edit_meal.html', meal=meal)
+        return redirect(url_for("index"))
 
-@app.route('/delete/<int:meal_id>', methods=['POST'])
-def delete_meal_route(meal_id):
-    meal = get_meal_by_id(meal_id)
-    if not meal:
-        flash('Meal not found!', 'danger')
-        return redirect(url_for('index'))
-    
-    delete_meal(meal_id)
-    flash('Meal deleted successfully!', 'success')
-    return redirect(url_for('index'))
+    if request.method == "POST":
+        meal["name"] = request.form["name"]
+        meal["category"] = request.form["category"]
+        meal["ingredients"] = request.form["ingredients"]
+        meal["calories"] = int(request.form.get("calories", 0))
+        meal["protein"] = int(request.form.get("protein", 0))
+        meal["carbs"] = int(request.form.get("carbs", 0))
+        meal["fat"] = int(request.form.get("fat", 0))
+        meal["instructions"] = request.form.get("instructions", "")
+        save_meals(meals)
+        return redirect(url_for("view_meal", meal_id=meal_id))
 
-@app.route('/plan', methods=['GET', 'POST'])
+    return render_template("edit_meal.html", meal=meal)
+
+@app.route("/delete/<int:meal_id>", methods=["POST"])
+def delete_meal(meal_id):
+    if "user" not in session:
+        return redirect(url_for("login"))
+    meals = load_meals()
+    meals = [m for m in meals if m["id"] != meal_id]
+    save_meals(meals)
+    return redirect(url_for("index"))
+
+@app.route("/plan", methods=["GET", "POST"])
 def meal_plan():
-    meals = get_all_meals()
+    if "user" not in session:
+        return redirect(url_for("login"))
+    meals = load_meals()
     selected_meals = []
-    totals = None
-    
-    if request.method == 'POST':
-        selected_meal_ids = request.form.getlist('meal_ids')
-        selected_meals = [meal for meal in meals if meal['id'] in selected_meal_ids]
-        totals = calculate_nutrition_totals(selected_meal_ids)
-    
-    return render_template('meal_plan.html', meals=meals, selected_meals=selected_meals, totals=totals)
+    totals = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
 
-if _name_ == '_main_':
-    init_excel_file()
+    if request.method == "POST":
+        ids = request.form.getlist("meal_ids")
+        selected_meals = [m for m in meals if str(m["id"]) in ids]
+        for m in selected_meals:
+            totals["calories"] += m["calories"]
+            totals["protein"] += m["protein"]
+            totals["carbs"] += m["carbs"]
+            totals["fat"] += m["fat"]
+
+    return render_template("meal_plan.html", meals=meals, selected_meals=selected_meals, totals=totals)
+
+if __name__ == "__main__":
     app.run(debug=True)
